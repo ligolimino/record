@@ -13,6 +13,8 @@
     button { border: 0; cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
     #recordButton { width: min(56vw, 220px); aspect-ratio: 1; display: grid; place-items: center; padding: 0; border-radius: 50%; background: #147ad6; color: #fff; box-shadow: 0 12px 0 #0a5597, 0 20px 38px rgb(20 122 214 / 24%); transition: background 150ms ease, box-shadow 150ms ease, transform 100ms ease; }
     #recordButton.recording { background: #e33d3d; box-shadow: 0 12px 0 #a82020, 0 20px 38px rgb(227 61 61 / 24%); }
+    #recordButton.recording #microphoneIcon { display: none; }
+    #recordButton:not(.recording) #stopIcon { display: none; }
     #recordButton:active, .smallButton:active { transform: translateY(5px); }
     #recordButton svg { width: 52%; height: 52%; }
     #actions { width: min(74vw, 290px); display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
@@ -32,7 +34,7 @@
         <path d="M32 39a9 9 0 0 0 9-9V17a9 9 0 1 0-18 0v13a9 9 0 0 0 9 9Z" fill="currentColor"/>
         <path d="M16 29a16 16 0 0 0 32 0M32 45v11M23 56h18" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"/>
       </svg>
-      <svg id="stopIcon" viewBox="0 0 64 64" aria-hidden="true" hidden>
+      <svg id="stopIcon" viewBox="0 0 64 64" aria-hidden="true">
         <rect x="17" y="17" width="30" height="30" rx="4" fill="currentColor"/>
       </svg>
     </button>
@@ -84,8 +86,6 @@
     function showRecordingState(isRecording) {
       recordButton.classList.toggle('recording', isRecording);
       recordButton.setAttribute('aria-label', isRecording ? 'Stop opname' : 'Start opname');
-      microphoneIcon.hidden = isRecording;
-      stopIcon.hidden = !isRecording;
     }
     async function startRecording() {
       if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
@@ -127,6 +127,10 @@
     async function togglePlayback() {
       if (playback.paused) {
         try {
+          if (playback.ended || playback.currentTime >= playback.duration) {
+            playback.currentTime = 0;
+          }
+          timer.textContent = formatTime(Math.floor(playback.currentTime));
           await playback.play();
           playIcon.hidden = true;
           pauseIcon.hidden = false;
@@ -153,6 +157,11 @@
       playIcon.hidden = false;
       pauseIcon.hidden = true;
       playButton.setAttribute('aria-label', 'Beluister opname');
+    });
+    playback.addEventListener('timeupdate', () => {
+      if (!playback.paused) {
+        timer.textContent = formatTime(Math.floor(playback.currentTime));
+      }
     });
     window.addEventListener('pagehide', () => {
       stopTimer();
