@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="nl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#ffffff">
+  <title>Recorder</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100svh; display: grid; place-items: center; background: #fff; font-family: Arial, sans-serif; }
+    main { width: min(88vw, 380px); display: grid; justify-items: center; gap: 22px; }
+    #timer { min-height: 1.5em; color: #526273; font-size: 1.35rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+    button { border: 0; cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+    #recordButton { width: min(56vw, 220px); aspect-ratio: 1; display: grid; place-items: center; padding: 0; border-radius: 50%; background: #147ad6; color: #fff; box-shadow: 0 12px 0 #0a5597, 0 20px 38px rgb(20 122 214 / 24%); transition: background 150ms ease, box-shadow 150ms ease, transform 100ms ease; }
+    #recordButton.recording { background: #e33d3d; box-shadow: 0 12px 0 #a82020, 0 20px 38px rgb(227 61 61 / 24%); }
+    #recordButton:active, .smallButton:active { transform: translateY(5px); }
+    #recordButton svg { width: 52%; height: 52%; }
+    #actions { width: min(74vw, 290px); display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+    .smallButton { aspect-ratio: 1; display: grid; place-items: center; padding: 0; border-radius: 50%; color: #fff; transition: transform 100ms ease; }
+    #playButton { background: #27a56f; box-shadow: 0 8px 0 #18734c; }
+    #againButton { background: #f09a22; box-shadow: 0 8px 0 #ae6710; }
+    .smallButton svg { width: 48%; height: 48%; }
+    button:focus-visible { outline: 6px solid #ffcf40; outline-offset: 7px; }
+    [hidden] { display: none !important; }
+    @media (max-height: 560px) { main { gap: 14px; } #recordButton { width: 150px; } #actions { width: 210px; gap: 18px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <button id="recordButton" type="button" aria-label="Start opname">
+      <svg id="microphoneIcon" viewBox="0 0 64 64" aria-hidden="true">
+        <path d="M32 39a9 9 0 0 0 9-9V17a9 9 0 1 0-18 0v13a9 9 0 0 0 9 9Z" fill="currentColor"/>
+        <path d="M16 29a16 16 0 0 0 32 0M32 45v11M23 56h18" fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round"/>
+      </svg>
+      <svg id="stopIcon" viewBox="0 0 64 64" aria-hidden="true" hidden>
+        <rect x="17" y="17" width="30" height="30" rx="4" fill="currentColor"/>
+      </svg>
+    </button>
+    <div id="timer" aria-live="off">00:00</div>
+    <div id="actions" hidden>
+      <button id="playButton" class="smallButton" type="button" aria-label="Beluister opname">
+        <svg id="playIcon" viewBox="0 0 64 64" aria-hidden="true"><path d="M21 14v36l30-18L21 14Z" fill="currentColor"/></svg>
+        <svg id="pauseIcon" viewBox="0 0 64 64" aria-hidden="true" hidden><rect x="18" y="15" width="10" height="34" rx="2" fill="currentColor"/><rect x="36" y="15" width="10" height="34" rx="2" fill="currentColor"/></svg>
+      </button>
+      <button id="againButton" class="smallButton" type="button" aria-label="Opnieuw opnemen">
+        <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M20 21H8V9" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/><path d="M11 20a24 24 0 1 1-2 20" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <audio id="playback"></audio>
+  </main>
+  <script>
+    const recordButton = document.querySelector('#recordButton');
+    const microphoneIcon = document.querySelector('#microphoneIcon');
+    const stopIcon = document.querySelector('#stopIcon');
+    const timer = document.querySelector('#timer');
+    const actions = document.querySelector('#actions');
+    const playButton = document.querySelector('#playButton');
+    const playIcon = document.querySelector('#playIcon');
+    const pauseIcon = document.querySelector('#pauseIcon');
+    const againButton = document.querySelector('#againButton');
+    const playback = document.querySelector('#playback');
+    let recorder, stream, audioUrl, timerInterval, startedAt;
+    let chunks = [];
+
+    function formatTime(totalSeconds) {
+      const minutes = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
+      const seconds = (totalSeconds % 60).toString().padStart(2, '0');
+      return `${minutes}:${seconds}`;
+    }
+    function startTimer() {
+      startedAt = Date.now();
+      timer.textContent = '00:00';
+      timerInterval = setInterval(() => {
+        const seconds = Math.floor((Date.now() - startedAt) / 1000);
+        timer.textContent = formatTime(seconds);
+        if (seconds >= 120) stopRecording();
+      }, 250);
+    }
+    function stopTimer() { clearInterval(timerInterval); timerInterval = undefined; }
+    function releaseMicrophone() { stream?.getTracks().forEach(track => track.stop()); stream = undefined; }
+    function chooseMimeType() {
+      return ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm'].find(type => MediaRecorder.isTypeSupported(type)) || '';
+    }
+    function showRecordingState(isRecording) {
+      recordButton.classList.toggle('recording', isRecording);
+      recordButton.setAttribute('aria-label', isRecording ? 'Stop opname' : 'Start opname');
+      microphoneIcon.hidden = isRecording;
+      stopIcon.hidden = !isRecording;
+    }
+    async function startRecording() {
+      if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+        alert('Opnemen werkt niet in deze browser. Open de pagina in Safari, Chrome of Edge.');
+        return;
+      }
+      try {
+        playback.pause();
+        if (audioUrl) URL.revokeObjectURL(audioUrl);
+        audioUrl = undefined;
+        actions.hidden = true;
+        chunks = [];
+        stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+        const mimeType = chooseMimeType();
+        recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+        recorder.addEventListener('dataavailable', event => { if (event.data.size) chunks.push(event.data); });
+        recorder.addEventListener('stop', finishRecording, { once: true });
+        recorder.start();
+        showRecordingState(true);
+        startTimer();
+      } catch (error) {
+        releaseMicrophone();
+        alert(error?.name === 'NotAllowedError' ? 'Geef toestemming om de microfoon te gebruiken.' : 'De microfoon kon niet worden gestart.');
+      }
+    }
+    function stopRecording() {
+      if (recorder?.state !== 'recording') return;
+      stopTimer();
+      recorder.stop();
+    }
+    function finishRecording() {
+      const type = recorder.mimeType || chunks[0]?.type || 'audio/webm';
+      audioUrl = URL.createObjectURL(new Blob(chunks, { type }));
+      playback.src = audioUrl;
+      releaseMicrophone();
+      showRecordingState(false);
+      actions.hidden = false;
+    }
+    async function togglePlayback() {
+      if (playback.paused) {
+        try {
+          await playback.play();
+          playIcon.hidden = true;
+          pauseIcon.hidden = false;
+          playButton.setAttribute('aria-label', 'Pauzeer opname');
+        } catch { alert('De opname kon niet worden afgespeeld. Neem opnieuw op.'); }
+      } else {
+        playback.pause();
+        playIcon.hidden = false;
+        pauseIcon.hidden = true;
+        playButton.setAttribute('aria-label', 'Beluister opname');
+      }
+    }
+    function prepareNewRecording() {
+      playback.pause();
+      playback.currentTime = 0;
+      playIcon.hidden = false;
+      pauseIcon.hidden = true;
+      startRecording();
+    }
+    recordButton.addEventListener('click', () => recorder?.state === 'recording' ? stopRecording() : startRecording());
+    playButton.addEventListener('click', togglePlayback);
+    againButton.addEventListener('click', prepareNewRecording);
+    playback.addEventListener('ended', () => {
+      playIcon.hidden = false;
+      pauseIcon.hidden = true;
+      playButton.setAttribute('aria-label', 'Beluister opname');
+    });
+    window.addEventListener('pagehide', () => {
+      stopTimer();
+      releaseMicrophone();
+      if (audioUrl) URL.revokeObjectURL(audioUrl);
+    });
+  </script>
+</body>
+</html>
