@@ -6,25 +6,96 @@
   <meta name="theme-color" content="#ffffff">
   <title>Recorder</title>
   <style>
+    /* Alle maten volgen de grootte van het insluitvak (vw en vh zijn hier
+       de breedte en hoogte van het vak in Genially). Maak het vak groter of
+       kleiner en de knoppen schalen mee. --mic is de microfoonknop; de
+       andere maten zijn daarvan afgeleid. */
+    :root {
+      --mic: min(46vw, 70vh, 480px);
+      --small: calc(var(--mic) * 0.34);
+      --gap: calc(var(--mic) * 0.16);
+      --blue: #147ad6;
+      --blue-dark: #0d63b3;
+      --red: #e0413f;
+      --red-dark: #c22f2d;
+      --green: #1f9d68;
+      --muted: #7a8896;
+      --line: #dbe3ea;
+    }
     * { box-sizing: border-box; }
-    body { margin: 0; min-height: 100svh; display: grid; place-items: center; background: #fff; font-family: Arial, sans-serif; }
-    main { width: min(88vw, 380px); display: grid; justify-items: center; gap: 22px; }
-    #timer { min-height: 1.5em; color: #526273; font-size: 1.35rem; font-weight: 700; font-variant-numeric: tabular-nums; }
-    button { border: 0; cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
-    #recordButton { width: min(56vw, 220px); aspect-ratio: 1; display: grid; place-items: center; padding: 0; border-radius: 50%; background: #147ad6; color: #fff; box-shadow: 0 12px 0 #0a5597, 0 20px 38px rgb(20 122 214 / 24%); transition: background 150ms ease, box-shadow 150ms ease, transform 100ms ease; }
-    #recordButton.recording { background: #e33d3d; box-shadow: 0 12px 0 #a82020, 0 20px 38px rgb(227 61 61 / 24%); }
+    html, body { height: 100%; }
+    /* Doorzichtig: in Genially is de dia rond de knoppen zichtbaar. */
+    body { margin: 0; display: grid; place-items: center; background: transparent; font-family: Arial, sans-serif; overflow: hidden; }
+    main {
+      display: grid;
+      grid-template-columns: var(--small) var(--mic) var(--small);
+      grid-template-areas: "again record play" ". timer .";
+      align-items: center;
+      justify-items: center;
+      column-gap: var(--gap);
+      row-gap: calc(var(--mic) * 0.07);
+    }
+    button { border: 0; cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; padding: 0; display: grid; place-items: center; border-radius: 50%; }
+    button svg { display: block; }
+    button:focus-visible { outline: max(3px, calc(var(--mic) * 0.018)) solid #ffcf40; outline-offset: max(3px, calc(var(--mic) * 0.03)); }
+
+    #recordButton {
+      grid-area: record;
+      width: var(--mic);
+      aspect-ratio: 1;
+      color: #fff;
+      background: radial-gradient(circle at 35% 28%, #3b95e6, var(--blue) 55%, var(--blue-dark));
+      box-shadow: 0 calc(var(--mic) * 0.05) calc(var(--mic) * 0.14) rgb(20 122 214 / 28%), inset 0 calc(var(--mic) * -0.025) 0 rgb(0 0 0 / 12%);
+      transition: background 200ms ease, box-shadow 200ms ease, transform 120ms ease;
+    }
+    #recordButton svg { width: 46%; height: 46%; }
+    #recordButton.recording {
+      background: radial-gradient(circle at 35% 28%, #ef6866, var(--red) 55%, var(--red-dark));
+      box-shadow: 0 calc(var(--mic) * 0.05) calc(var(--mic) * 0.14) rgb(224 65 63 / 30%), inset 0 calc(var(--mic) * -0.025) 0 rgb(0 0 0 / 12%);
+      animation: pulse 1.6s ease-out infinite;
+    }
+    #recordButton.recording svg { width: 34%; height: 34%; }
     #recordButton.recording #microphoneIcon { display: none; }
     #recordButton:not(.recording) #stopIcon { display: none; }
-    #recordButton:active, .smallButton:active { transform: translateY(5px); }
-    #recordButton svg { width: 52%; height: 52%; }
-    #actions { width: min(74vw, 290px); display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
-    .smallButton { aspect-ratio: 1; display: grid; place-items: center; padding: 0; border-radius: 50%; color: #fff; transition: transform 100ms ease; }
-    #playButton { background: #27a56f; box-shadow: 0 8px 0 #18734c; }
-    #againButton { background: #f09a22; box-shadow: 0 8px 0 #ae6710; }
-    .smallButton svg { width: 48%; height: 48%; }
-    button:focus-visible { outline: 6px solid #ffcf40; outline-offset: 7px; }
+    @keyframes pulse {
+      0% { box-shadow: 0 0 0 0 rgb(224 65 63 / 40%), 0 calc(var(--mic) * 0.05) calc(var(--mic) * 0.14) rgb(224 65 63 / 30%); }
+      100% { box-shadow: 0 0 0 calc(var(--mic) * 0.09) rgb(224 65 63 / 0%), 0 calc(var(--mic) * 0.05) calc(var(--mic) * 0.14) rgb(224 65 63 / 30%); }
+    }
+
+    /* Beluisteren en opnieuw: klein en rustig, wit met een fijne rand. */
+    .smallButton {
+      width: var(--small);
+      aspect-ratio: 1;
+      background: #fff;
+      border: max(1px, calc(var(--small) * 0.025)) solid var(--line);
+      box-shadow: 0 calc(var(--small) * 0.05) calc(var(--small) * 0.16) rgb(23 48 66 / 10%);
+      transition: opacity 220ms ease, transform 220ms ease, border-color 150ms ease;
+    }
+    .smallButton svg { width: 44%; height: 44%; }
+    .smallButton:hover { border-color: #b9c7d3; }
+    #playButton { grid-area: play; color: var(--green); }
+    #againButton { grid-area: again; color: var(--muted); }
+    /* Zolang er geen opname is, staan ze er onzichtbaar: zo verspringt de
+       microfoonknop niet wanneer ze verschijnen. */
+    main:not(.has-recording) .smallButton { visibility: hidden; opacity: 0; transform: scale(0.8); }
+
+    #recordButton:active, .smallButton:active { transform: scale(0.95); }
+
+    #timer {
+      grid-area: timer;
+      min-height: 1.2em;
+      color: var(--muted);
+      font-size: max(12px, calc(var(--mic) * 0.1));
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.03em;
+    }
+    main.is-recording #timer { color: var(--red); }
     [hidden] { display: none !important; }
-    @media (max-height: 560px) { main { gap: 14px; } #recordButton { width: 150px; } #actions { width: 210px; gap: 18px; } }
+    @media (prefers-reduced-motion: reduce) {
+      #recordButton.recording { animation: none; }
+      button, .smallButton { transition: none; }
+    }
   </style>
 </head>
 <body>
@@ -39,15 +110,13 @@
       </svg>
     </button>
     <div id="timer" aria-live="off">00:00</div>
-    <div id="actions" hidden>
-      <button id="playButton" class="smallButton" type="button" aria-label="Beluister opname">
-        <svg id="playIcon" viewBox="0 0 64 64" aria-hidden="true"><path d="M21 14v36l30-18L21 14Z" fill="currentColor"/></svg>
-        <svg id="pauseIcon" viewBox="0 0 64 64" aria-hidden="true" hidden><rect x="18" y="15" width="10" height="34" rx="2" fill="currentColor"/><rect x="36" y="15" width="10" height="34" rx="2" fill="currentColor"/></svg>
-      </button>
-      <button id="againButton" class="smallButton" type="button" aria-label="Opnieuw opnemen">
-        <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M20 21H8V9" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/><path d="M11 20a24 24 0 1 1-2 20" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round"/></svg>
-      </button>
-    </div>
+    <button id="playButton" class="smallButton" type="button" aria-label="Beluister opname">
+      <svg id="playIcon" viewBox="0 0 64 64" aria-hidden="true"><path d="M22 14v36l30-18L22 14Z" fill="currentColor" stroke="currentColor" stroke-width="4" stroke-linejoin="round"/></svg>
+      <svg id="pauseIcon" viewBox="0 0 64 64" aria-hidden="true" hidden><rect x="18" y="15" width="10" height="34" rx="2" fill="currentColor"/><rect x="36" y="15" width="10" height="34" rx="2" fill="currentColor"/></svg>
+    </button>
+    <button id="againButton" class="smallButton" type="button" aria-label="Opnieuw opnemen">
+      <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M20 21H8V9" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/><path d="M11 20a24 24 0 1 1-2 20" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round"/></svg>
+    </button>
     <audio id="playback"></audio>
   </main>
   <script>
@@ -55,7 +124,7 @@
     const microphoneIcon = document.querySelector('#microphoneIcon');
     const stopIcon = document.querySelector('#stopIcon');
     const timer = document.querySelector('#timer');
-    const actions = document.querySelector('#actions');
+    const main = document.querySelector('main');
     const playButton = document.querySelector('#playButton');
     const playIcon = document.querySelector('#playIcon');
     const pauseIcon = document.querySelector('#pauseIcon');
@@ -85,6 +154,7 @@
     }
     function showRecordingState(isRecording) {
       recordButton.classList.toggle('recording', isRecording);
+      main.classList.toggle('is-recording', isRecording);
       recordButton.setAttribute('aria-label', isRecording ? 'Stop opname' : 'Start opname');
     }
     async function startRecording() {
@@ -96,7 +166,7 @@
         playback.pause();
         if (audioUrl) URL.revokeObjectURL(audioUrl);
         audioUrl = undefined;
-        actions.hidden = true;
+        main.classList.remove('has-recording');
         chunks = [];
         stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
         const mimeType = chooseMimeType();
@@ -122,7 +192,7 @@
       playback.src = audioUrl;
       releaseMicrophone();
       showRecordingState(false);
-      actions.hidden = false;
+      main.classList.add('has-recording');
     }
     async function togglePlayback() {
       if (playback.paused) {
