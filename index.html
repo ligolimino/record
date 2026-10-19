@@ -29,7 +29,7 @@
     main {
       display: grid;
       grid-template-columns: var(--small) var(--mic) var(--small);
-      grid-template-areas: "again record play" ". timer .";
+      grid-template-areas: "again record play" ". timer ." "message message message";
       align-items: center;
       justify-items: center;
       column-gap: var(--gap);
@@ -91,6 +91,23 @@
       letter-spacing: 0.03em;
     }
     main.is-recording #timer { color: var(--red); }
+
+    /* Melding als er iets misgaat (een venster met alert() wordt in
+       Genially vaak stil tegengehouden, deze tekst niet). */
+    #message {
+      grid-area: message;
+      max-width: calc(var(--mic) * 2.2);
+      text-align: center;
+      color: #8a2a1e;
+      background: #fff3ef;
+      border: 1px solid #f2c4b8;
+      border-radius: calc(var(--mic) * 0.05);
+      padding: calc(var(--mic) * 0.03) calc(var(--mic) * 0.06);
+      font-size: max(13px, calc(var(--mic) * 0.065));
+      line-height: 1.35;
+    }
+    #message a { color: inherit; font-weight: 700; }
+    #message:empty { display: none; }
     [hidden] { display: none !important; }
     @media (prefers-reduced-motion: reduce) {
       #recordButton.recording { animation: none; }
@@ -117,6 +134,7 @@
     <button id="againButton" class="smallButton" type="button" aria-label="Opnieuw opnemen">
       <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M20 21H8V9" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/><path d="M11 20a24 24 0 1 1-2 20" fill="none" stroke="currentColor" stroke-width="7" stroke-linecap="round"/></svg>
     </button>
+    <div id="message" role="alert"></div>
     <audio id="playback"></audio>
   </main>
   <script>
@@ -130,6 +148,8 @@
     const pauseIcon = document.querySelector('#pauseIcon');
     const againButton = document.querySelector('#againButton');
     const playback = document.querySelector('#playback');
+    const message = document.querySelector('#message');
+    const embedded = window.self !== window.top;
     let recorder, stream, audioUrl, timerInterval, startedAt;
     let chunks = [];
 
@@ -149,8 +169,35 @@
     }
     function stopTimer() { clearInterval(timerInterval); timerInterval = undefined; }
     function releaseMicrophone() { stream?.getTracks().forEach(track => track.stop()); stream = undefined; }
+    // WebM waar dat kan (Chrome, Edge, Android, Firefox); mp4 voor Safari.
     function chooseMimeType() {
-      return ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm'].find(type => MediaRecorder.isTypeSupported(type)) || '';
+      return ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'].find(type => MediaRecorder.isTypeSupported(type)) || '';
+    }
+    function showMessage(html) { message.innerHTML = html || ''; }
+    const openLink = embedded
+      ? ` <a href="${location.href}" target="_blank" rel="noopener">Open de recorder in een nieuw venster.</a>`
+      : '';
+    function explainError(error) {
+      const name = error?.name || '';
+      if (name === 'NotAllowedError' || name === 'SecurityError') {
+        return embedded
+          ? 'De microfoon is hier niet toegestaan.' + openLink
+          : 'De microfoon is niet toegestaan. Klik links van het webadres op het slotje en zet Microfoon op Toestaan.';
+      }
+      if (name === 'NotFoundError' || name === 'OverconstrainedError') return 'Er is geen microfoon gevonden.' + openLink;
+      if (name === 'NotReadableError' || name === 'AbortError') {
+        return 'De microfoon wordt al door een ander programma gebruikt. Sluit dat programma en probeer opnieuw.';
+      }
+      return `De microfoon kon niet worden gestart (${name || 'onbekende fout'}).` + openLink;
+    }
+    // Eerst met de gewone instellingen; lukt dat niet, dan zonder extra's.
+    async function openMicrophone() {
+      try {
+        return await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+      } catch (error) {
+        if (error?.name === 'NotAllowedError' || error?.name === 'SecurityError') throw error;
+        return navigator.mediaDevices.getUserMedia({ audio: true });
+      }
     }
     function showRecordingState(isRecording) {
       recordButton.classList.toggle('recording', isRecording);
@@ -159,18 +206,29 @@
     }
     async function startRecording() {
       if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
-        alert('Opnemen werkt niet in deze browser. Open de pagina in Safari, Chrome of Edge.');
+        showMessage('Opnemen werkt niet in deze browser. Open de pagina in Safari, Chrome of Edge.' + openLink);
         return;
       }
+      showMessage('');
       try {
         playback.pause();
         if (audioUrl) URL.revokeObjectURL(audioUrl);
         audioUrl = undefined;
         main.classList.remove('has-recording');
         chunks = [];
-        stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+        stream = await openMicrophone();
         const mimeType = chooseMimeType();
-        recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+        try {
+          recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+        } catch {
+          recorder = new MediaRecorder(stream);
+        }
+        recorder.addEventListener('error', event => {
+          stopTimer();
+          releaseMicrophone();
+          showRecordingState(false);
+          showMessage(`Het opnemen is mislukt (${event.error?.name || 'fout'}). Probeer opnieuw.`);
+        });
         recorder.addEventListener('dataavailable', event => { if (event.data.size) chunks.push(event.data); });
         recorder.addEventListener('stop', finishRecording, { once: true });
         recorder.start();
@@ -178,7 +236,9 @@
         startTimer();
       } catch (error) {
         releaseMicrophone();
-        alert(error?.name === 'NotAllowedError' ? 'Geef toestemming om de microfoon te gebruiken.' : 'De microfoon kon niet worden gestart.');
+        stopTimer();
+        showRecordingState(false);
+        showMessage(explainError(error));
       }
     }
     function stopRecording() {
@@ -205,7 +265,7 @@
           playIcon.hidden = true;
           pauseIcon.hidden = false;
           playButton.setAttribute('aria-label', 'Pauzeer opname');
-        } catch { alert('De opname kon niet worden afgespeeld. Neem opnieuw op.'); }
+        } catch { showMessage('De opname kon niet worden afgespeeld. Neem opnieuw op.'); }
       } else {
         playback.pause();
         playIcon.hidden = false;
